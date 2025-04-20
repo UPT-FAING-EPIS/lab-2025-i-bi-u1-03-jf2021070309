@@ -1,4 +1,4 @@
-name: Infraestructura + Restauración de Base de Datos en Azure
+name: Infraestructura + Script SQL en Azure
 
 on:
   push:
@@ -24,45 +24,39 @@ jobs:
 
     - name: Crear archivo terraform.tfvars
       run: |
-        echo "subscription_id = \"${{ secrets.SUBSCRIPTION_ID }}\"" > ./infra/terraform.tfvars
-        echo "sqladmin_username = \"${{ secrets.SQL_USERNAME }}\"" >> ./infra/terraform.tfvars
-        echo "sqladmin_password = \"${{ secrets.SQL_PASSWORD }}\"" >> ./infra/terraform.tfvars
-        echo "resource_group_name = \"${{ secrets.RESOURCE_GROUP }}\"" >> ./infra/terraform.tfvars
-        echo "location = \"${{ secrets.LOCATION }}\"" >> ./infra/terraform.tfvars
-
+        echo "subscription_id = \"${{ secrets.SUBSCRIPTION_ID }}\"" > ./terra/terraform.tfvars
+        echo "sqladmin_username = \"${{ secrets.SQL_USERNAME }}\"" >> ./terra/terraform.tfvars
+        echo "sqladmin_password = \"${{ secrets.SQL_PASSWORD }}\"" >> ./terra/terraform.tfvars
+        echo "resource_group_name = \"${{ secrets.RESOURCE_GROUP }}\"" >> ./terra/terraform.tfvars
+        echo "location = \"${{ secrets.LOCATION }}\"" >> ./terra/terraform.tfvars
     - name: Terraform Init
-      working-directory: ./infra
+      working-directory: ./terra
       run: terraform init
 
     - name: Terraform Plan
-      working-directory: ./infra
+      working-directory: ./terra
       run: terraform plan -var-file="terraform.tfvars" -out="main.tfplan"
 
     - name: Terraform Apply
-      working-directory: ./infra
+      working-directory: ./terra
       run: terraform apply -auto-approve "main.tfplan"
 
     - name: Instalar módulo SqlServer para PowerShell
       run: |
         Install-Module -Name SqlServer -Force -SkipPublisherCheck -AllowClobber
-
-    - name: Restaurar base de datos desde .bak
+    - name: Ejecutar script SQL para restauración
       shell: pwsh
       run: |
         $serverName = "${{ secrets.SQL_SERVER }}"
-        $databaseName = "dbpowerbi"  # Nombre de la base de datos a restaurar
+        $databaseName = "${{ secrets.SQL_DB }}"
         $username = "${{ secrets.SQL_USERNAME }}"
         $password = "${{ secrets.SQL_PASSWORD }}"
-        $bakFilePath = "AdventureWorksLT2016.bak"  # Ruta completa del archivo .bak en el servidor
-
-        $connectionString = "Server=$serverName;Database=$databaseName;User Id=$username;Password=$password;"
-
-        # Ejecutar la restauración desde el archivo .bak
-        $restoreQuery = @"
-        RESTORE DATABASE [$databaseName] 
-        FROM DISK = N'$bakFilePath' 
-        WITH REPLACE, RECOVERY;
-        "@
-
-        # Ejecutar el script de restauración
-        Invoke-Sqlcmd -ConnectionString $connectionString -Query $restoreQuery
+        $scriptPath = "bd.sql"
+        if (Test-Path $scriptPath) {
+          $sqlScript = Get-Content -Path $scriptPath -Raw
+          $connectionString = "Server=$serverName;Database=$databaseName;User Id=$username;Password=$password;"
+          Invoke-Sqlcmd -ConnectionString $connectionString -Query $sqlScript
+        } else {
+          Write-Error "No se encontró el archivo $scriptPath"
+          exit 1
+        }
