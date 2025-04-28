@@ -2,8 +2,6 @@ name: Deploy Power BI Dashboard
 
 on:
   push:
-    paths:
-      - 'lab03-JaimeFlores.pbix'
     branches:
       - main
 
